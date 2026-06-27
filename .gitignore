@@ -1,0 +1,64 @@
+# ============================================
+# NexusKit 全局 Git 忽略规则
+# ============================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# --- Python 虚拟环境 ---
+venv/
+.venv/
+env/
+
+# --- 环境变量 (敏感信息) ---
+.env
+.env.local
+.env.*.local
+
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.qoder
+
+#排除admin，admin单独有仓库
+admin
+
+
+# --- 数据库持久化数据 ---
+deploy/data/postgres/
+deploy/data/redis/
+*.rdb
+
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- 日志 ---
+*.log
+
+# --- 测试与覆盖率 ---
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
