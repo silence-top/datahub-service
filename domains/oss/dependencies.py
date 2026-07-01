@@ -1,4 +1,4 @@
-﻿# domains/oss/dependencies.py — OSS config domain DI wiring
+﻿# domains/oss/dependencies.py — OSS config DI wiring
 """
 依赖注入集中管理，Router 通过 Annotated[T, Depends(...)] 消费。
 """

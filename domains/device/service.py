@@ -1,6 +1,7 @@
 ﻿# domains/device/service.py — Device business logic
 import asyncio
 import json
+import secrets
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from domains.device.exceptions import DeviceNotFoundError
 from domains.device.models import Device
 from domains.device.repository import DeviceRepository
 from domains.device.schemas import (
+    DeviceAuthOut,
     DeviceCreate,
     DeviceDetailOut,
     DeviceListQuery,
@@ -27,11 +29,13 @@ class DeviceService:
     # ------------------------------------------------------------------
 
     async def register(self, user_id: int, data: DeviceCreate) -> DeviceOut:
-        """注册新设备。"""
+        """注册新设备，自动生成唯一密钥。"""
+        device_secret = secrets.token_hex(32)
         obj = await self._repo.create(
             app_code=data.app_code,
             dept_id=data.dept_id,
             device_code=data.device_code,
+            device_secret=device_secret,
             device_name=data.device_name,
             model=data.model,
             manufacturer=data.manufacturer,
@@ -83,6 +87,29 @@ class DeviceService:
             raise DeviceNotFoundError(device_code)
         await self._repo.delete(obj)
         await self._db.commit()
+
+    async def authenticate(self, device_code: str, device_secret: str) -> DeviceAuthOut:
+        """验证设备编码+密钥，返回设备信息（不含密钥）。"""
+        from fastapi import HTTPException
+
+        obj = await self._repo.get_by_code(device_code)
+        if obj is None:
+            raise HTTPException(status_code=401, detail="认证失败：设备编码或密钥错误")
+        if not obj.is_active:
+            raise HTTPException(status_code=403, detail="设备已被禁用")
+        if not secrets.compare_digest(obj.device_secret, device_secret):
+            raise HTTPException(status_code=401, detail="认证失败：设备编码或密钥错误")
+        return DeviceAuthOut.model_validate(obj)
+
+    async def regenerate_secret(self, device_code: str) -> str:
+        """重新生成设备密钥，返回新密钥。"""
+        obj = await self._repo.get_by_code(device_code)
+        if obj is None:
+            raise DeviceNotFoundError(device_code)
+        new_secret = secrets.token_hex(32)
+        obj = await self._repo.update(obj, device_secret=new_secret)
+        await self._db.commit()
+        return new_secret
 
     # ------------------------------------------------------------------
     # Validation helpers (供 slice 域调用)

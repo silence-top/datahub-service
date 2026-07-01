@@ -7,7 +7,9 @@ from nexuskit_sdk import init_app, response
 
 from core.config import get_app_settings
 from core.lifespan import lifespan
+from domains.admin.router import router as admin_router
 from domains.device.router import router as device_router
+from domains.dict.router import router as dict_router
 from domains.oss.router import router as oss_router
 from domains.slice.router import router as slice_router
 from middleware.gateway_auth import GatewayAuthMiddleware
@@ -57,8 +59,10 @@ init_app(app)
 # Routers
 # ------------------------------------------------------------------
 
+app.include_router(admin_router, prefix="/api/v1")
 app.include_router(slice_router, prefix="/api/v1")
 app.include_router(device_router, prefix="/api/v1")
+app.include_router(dict_router, prefix="/api/v1")
 app.include_router(oss_router, prefix="/api/v1")
 
 # ------------------------------------------------------------------

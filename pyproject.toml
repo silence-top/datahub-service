@@ -14,7 +14,7 @@ dependencies = [
     "asyncpg>=0.29",
     "alembic>=1.13",
     "pydantic-settings>=2.3",
-    "oss2>=2.18",
+    "aiobotocore[boto3]>=2.7",
     "python-multipart>=0.0.9",
     "nexuskit-sdk @ file:../nexuskit-backend/sdk",
     "httpx>=0.27",

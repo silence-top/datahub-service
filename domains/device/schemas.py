@@ -43,7 +43,7 @@ class DeviceUpdate(BaseModel):
 
 
 class DeviceOut(BaseModel):
-    """设备详情输出。"""
+    """设备详情输出。注册时包含 device_secret，其他场景应排除。"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,6 +51,7 @@ class DeviceOut(BaseModel):
     app_code: str
     dept_id: int | None
     device_code: str
+    device_secret: str | None = Field(None, description="设备密钥（仅注册时返回）")
     device_name: str
     model: str | None
     manufacturer: str | None
@@ -154,3 +155,39 @@ class DeviceListQuery(BaseModel):
     is_active: bool | None = None
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)
+
+
+# ---------------------------------------------------------------------------
+# Device Auth (设备密钥认证)
+# ---------------------------------------------------------------------------
+
+class DeviceAuthRequest(BaseModel):
+    """设备认证请求：携带设备编码和密钥。"""
+
+    device_code: str = Field(..., max_length=64, description="设备唯一编码")
+    device_secret: str = Field(..., min_length=16, max_length=128, description="设备密钥")
+
+
+class DeviceAuthOut(BaseModel):
+    """设备认证响应：返回设备基本信息（不含密钥）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    app_code: str
+    dept_id: int | None
+    device_code: str
+    device_name: str
+    model: str | None
+    manufacturer: str | None
+    allowed_formats: list[str]
+    allowed_staining: list[str]
+    max_file_size_mb: int
+    is_active: bool
+
+    @field_validator("allowed_formats", "allowed_staining", mode="before")
+    @classmethod
+    def _parse_json_list_auth(cls, v: object) -> list[str]:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v  # type: ignore[return-value]

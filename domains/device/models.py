@@ -26,6 +26,7 @@ class Device(Base):
 
     # --- 设备标识 ---
     device_code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    device_secret: Mapped[str] = mapped_column(String(64), nullable=False, comment="设备唯一密钥，用于扫描仪直连认证")
     device_name: Mapped[str] = mapped_column(String(128), nullable=False)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     manufacturer: Mapped[str | None] = mapped_column(String(64), nullable=True)

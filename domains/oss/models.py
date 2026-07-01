@@ -8,9 +8,15 @@ from core.db import Base
 
 
 class OssConfig(Base):
-    """OSS 存储配置表。
+    """S3 存储 Bucket 配置表。
 
-    每条记录代表一个完整的 OSS 连接（AK/SK/Endpoint/Bucket）。
+    统一使用 S3 协议，支持：
+      - AWS S3
+      - MinIO (自建)
+      - 阿里云 OSS (S3 兼容模式)
+      - 腾讯云 COS (S3 兼容)
+    
+    AK/SK 从 .env 读取（全局共享），Endpoint/Region/Bucket 存于本表。
     通过 app_code 路由：上传时按 app_code 查找配置，找不到回退 is_default=True 的配置。
     """
 
@@ -19,13 +25,18 @@ class OssConfig(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # --- 路由键 ---
-    app_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="应用编码，用于路由 OSS")
+    app_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="应用编码，用于路由存储")
 
-    # --- 配置信息 ---
+    # --- 连接信息（非敏感）---
     config_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="配置名称")
-    access_key_id: Mapped[str] = mapped_column(String(128), nullable=False, comment="OSS AccessKey ID")
-    access_key_secret: Mapped[str] = mapped_column(String(128), nullable=False, comment="OSS AccessKey Secret")
-    endpoint: Mapped[str] = mapped_column(String(256), nullable=False, comment="OSS Endpoint")
+    endpoint_url: Mapped[str] = mapped_column(
+        String(256), nullable=True,
+        comment="S3 Endpoint URL（AWS S3 留空，MinIO/阿里云需要）"
+    )
+    region_name: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="us-east-1",
+        comment="S3 Region"
+    )
     bucket_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="Bucket 名称")
 
     # --- 状态 ---

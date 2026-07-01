@@ -1,5 +1,4 @@
 ﻿# core/config.py — Datahub Service configuration
-import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,12 +24,15 @@ class AppSettings(BaseSettings):
     INTERNAL_SECRET: str = ""
 
 
-# --- OSS 环境变量（仅首次 seed 时使用，后续从 DB 管理）---
-# 读取 .env 中的 OSS_* 变量作为初始值，不存在时返回空字符串
-OSS_ACCESS_KEY_ID = os.getenv("OSS_ACCESS_KEY_ID", "")
-OSS_ACCESS_KEY_SECRET = os.getenv("OSS_ACCESS_KEY_SECRET", "")
-OSS_ENDPOINT = os.getenv("OSS_ENDPOINT", "")
-OSS_BUCKET_MAP = os.getenv("OSS_BUCKET_MAP", '{"default":"bucket-default"}')
+class S3Settings(BaseSettings):
+    model_config = _ENV
+    S3_ACCESS_KEY_ID: str
+    S3_SECRET_ACCESS_KEY: str
+
+
+@lru_cache
+def get_s3_settings() -> S3Settings:
+    return S3Settings()
 
 
 @lru_cache

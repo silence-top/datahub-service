@@ -50,7 +50,7 @@ class OssConfigRepository:
     # Read
     # ------------------------------------------------------------------
 
-    async def get_by_id(self, config_id: int) -> OssConfig | None:
+    async def get(self, config_id: int) -> OssConfig | None:
         result = await self._db.execute(select(OssConfig).where(OssConfig.id == config_id))
         return result.scalar_one_or_none()
 

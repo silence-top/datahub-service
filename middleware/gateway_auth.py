@@ -19,8 +19,16 @@ from nexuskit_sdk import BizCode, response, trace_ctx
 class GatewayAuthMiddleware(BaseHTTPMiddleware):
     """验证请求携带网关注入的身份 Header，并将身份信息写入 request.state。"""
 
-    # 不需要鉴权的路径前缀
-    _SKIP_PATHS = ("/docs", "/redoc", "/openapi.json", "/health", "/api/v1/devices/scanner")
+    # 不需要鉴权的路径前缀（设备密钥认证的端点走各自的 DeviceAuthDep）
+    _SKIP_PATHS = (
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/health",
+        "/api/v1/devices/scanner",
+        "/api/v1/slices/presign-upload-urls",
+        "/api/v1/slices/batch-confirm",
+    )
 
     async def dispatch(self, request: Request, call_next):
         # 跳过白名单路径

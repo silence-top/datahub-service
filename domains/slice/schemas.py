@@ -10,9 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class SliceUploadMeta(BaseModel):
     """文件上传时携带的元数据（form-data 字段）。"""
-
-    case_id: str | None = Field(None, max_length=64, description="关联诊断病例 ID（可选）")
-    patient_id: str | None = Field(None, max_length=64, description="患者 ID（可选）")
     staining_type: str = Field(..., max_length=32, description="染色类型，如 HE / IHC / PAS")
     description: str | None = Field(None, max_length=512, description="备注信息（可选）")
 
@@ -26,8 +23,7 @@ class SliceFileOut(BaseModel):
 
     id: int
     app_code: str
-    case_id: str | None
-    patient_id: str | None
+
     original_name: str
     file_format: str
     staining_type: str
@@ -72,6 +68,58 @@ class BatchUploadResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Presigned direct upload (服务端签名 + 客户端直传 OSS)
+# ---------------------------------------------------------------------------
+
+class PresignFileItem(BaseModel):
+    """单个待签名文件信息。"""
+
+    filename: str = Field(..., max_length=256, description="原始文件名")
+    file_size: int = Field(..., gt=0, description="文件大小 (bytes)")
+    relative_path: str | None = Field(None, max_length=512, description="文件夹场景的相对路径")
+
+
+class PresignBatchRequest(BaseModel):
+    """批量预签名请求。"""
+
+    device_code: str = Field(..., max_length=64, description="设备编码（必须已注册）")
+    files: list[PresignFileItem] = Field(..., min_length=1, max_length=200)
+
+
+class PresignItemOut(BaseModel):
+    """单个预签名结果。"""
+
+    filename: str
+    upload_url: str
+    oss_key: str
+
+
+class PresignBatchOut(BaseModel):
+    """批量预签名响应。"""
+
+    batch_id: str
+    presigns: list[PresignItemOut]
+    expires_in: int = Field(300, description="签名有效秒数")
+
+
+class BatchConfirmFileItem(BaseModel):
+    """批量确认中单个已上传文件信息。"""
+
+    filename: str
+    oss_key: str
+    file_size: int
+    file_format: str = Field(..., max_length=16, description="文件格式，如 SVS, TIFF")
+
+
+class BatchConfirmRequest(BaseModel):
+    """批量直传确认请求（文件已直传到 OSS，客户端汇报写入 DB）。"""
+
+    batch_id: str
+    device_code: str
+    files: list[BatchConfirmFileItem] = Field(..., min_length=1)
+
+
+# ---------------------------------------------------------------------------
 # List / Filter
 # ---------------------------------------------------------------------------
 
@@ -79,8 +127,6 @@ class SliceListQuery(BaseModel):
     """列表查询过滤参数。"""
 
     app_code: str | None = None
-    case_id: str | None = None
-    patient_id: str | None = None
     status: str | None = None
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)

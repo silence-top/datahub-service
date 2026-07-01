@@ -2,7 +2,12 @@
 from fastapi import APIRouter, Query, Request, status
 
 from domains.device.dependencies import CoreClientDep, DeviceServiceDep
-from domains.device.schemas import DeviceCreate, DeviceListQuery, DeviceUpdate
+from domains.device.schemas import (
+    DeviceAuthRequest,
+    DeviceCreate,
+    DeviceListQuery,
+    DeviceUpdate,
+)
 from nexuskit_sdk import response
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -91,18 +96,30 @@ async def get_device_detail(
 
 
 # ---------------------------------------------------------------------------
-# Scanner endpoint (扫描仪专用，白名单免鉴权)
+# Device Secret 管理
 # ---------------------------------------------------------------------------
 
-@router.get("/scanner/device/{device_code}")
-async def scanner_get_device(
-    device_code: str,
+@router.post("/{device_code}/regenerate-secret")
+async def regenerate_device_secret(device_code: str, svc: DeviceServiceDep):
+    """重新生成设备密钥（管理员操作，需鉴权）。"""
+    new_secret = await svc.regenerate_secret(device_code)
+    return response.success(data={"device_secret": new_secret}, message="密钥已重置")
+
+
+# ---------------------------------------------------------------------------
+# Scanner endpoint (扫描仪专用，白名单免网关鉴权，走设备密钥认证)
+# ---------------------------------------------------------------------------
+
+@router.post("/scanner/auth")
+async def scanner_auth(
+    data: DeviceAuthRequest,
     svc: DeviceServiceDep,
     core: CoreClientDep,
 ):
-    """扫描仪专用：获取设备信息（含部门/应用详情）。
+    """设备密钥认证：验证 device_code + device_secret，返回完整设备信息。
 
-    无需用户鉴权，通过网关白名单访问。
+    通过网关白名单免 JWT 鉴权，但需设备本身的有效密钥。
     """
-    detail = await svc.get_detail(device_code, core)
+    await svc.authenticate(data.device_code, data.device_secret)
+    detail = await svc.get_detail(data.device_code, core)
     return response.success(data=detail.model_dump())

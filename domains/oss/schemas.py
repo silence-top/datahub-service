@@ -1,4 +1,4 @@
-﻿# domains/oss/schemas.py — Pydantic schemas for OssConfig
+# domains/oss/schemas.py — Pydantic schemas for OssConfig
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,40 +9,37 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 class OssConfigCreate(BaseModel):
-    """新建 OSS 配置。"""
+    """新建 S3 Bucket 配置。"""
 
-    app_code: str = Field(..., max_length=32, description="应用编码，用于路由 OSS")
+    app_code: str = Field(..., max_length=32, description="应用编码，用于路由存储")
     config_name: str = Field(..., max_length=128, description="配置名称")
-    access_key_id: str = Field(..., max_length=128, description="OSS AccessKey ID")
-    access_key_secret: str = Field(..., max_length=128, description="OSS AccessKey Secret")
-    endpoint: str = Field(..., max_length=256, description="OSS Endpoint")
+    endpoint_url: str | None = Field(None, max_length=256, description="S3 Endpoint（AWS S3 留空）")
+    region_name: str = Field("us-east-1", max_length=32, description="S3 Region")
     bucket_name: str = Field(..., max_length=128, description="Bucket 名称")
     is_default: bool = Field(False, description="是否默认配置")
 
 
 class OssConfigUpdate(BaseModel):
-    """更新 OSS 配置，所有字段可选。"""
+    """更新 S3 Bucket 配置，所有字段可选。"""
 
     config_name: str | None = Field(None, max_length=128)
-    access_key_id: str | None = Field(None, max_length=128)
-    access_key_secret: str | None = Field(None, max_length=128)
-    endpoint: str | None = Field(None, max_length=256)
+    endpoint_url: str | None = Field(None, max_length=256)
+    region_name: str | None = Field(None, max_length=32)
     bucket_name: str | None = Field(None, max_length=128)
     is_default: bool | None = None
     is_active: bool | None = None
 
 
 class OssConfigOut(BaseModel):
-    """OSS 配置输出（access_key_secret 脱敏）。"""
+    """S3 Bucket 配置输出。"""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     app_code: str
     config_name: str
-    access_key_id: str
-    access_key_secret: str  # 脱敏后
-    endpoint: str
+    endpoint_url: str | None
+    region_name: str
     bucket_name: str
     is_default: bool
     is_active: bool

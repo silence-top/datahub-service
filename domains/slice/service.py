@@ -26,7 +26,11 @@ from domains.slice.models import SliceFile
 from domains.slice.repository import SliceRepository
 from domains.slice.schemas import (
     BatchFileFailure,
+    BatchConfirmRequest,
     BatchUploadResult,
+    PresignBatchOut,
+    PresignBatchRequest,
+    PresignItemOut,
     SliceFileOut,
     SliceListQuery,
     SliceUploadMeta,
@@ -139,8 +143,8 @@ class SliceService:
     # Presigned URL
     # ------------------------------------------------------------------
 
-    def get_presigned_url(self, obj: SliceFileOut, expires: int = 3600) -> str:
-        return self._storage.get_presigned_url(
+    async def get_presigned_url(self, obj: SliceFileOut, expires: int = 3600) -> str:
+        return await self._storage.get_presigned_url(
             bucket=obj.app_code,
             key=obj.oss_key,
             expires=expires,
@@ -168,7 +172,121 @@ class SliceService:
             await self._repo.delete(obj)
 
     # ------------------------------------------------------------------
-    # Batch upload
+    # Presigned direct upload (服务端签名 + 客户端直传 OSS)
+    # ------------------------------------------------------------------
+
+    async def presign_batch_upload(
+        self,
+        *,
+        app_code: str,
+        data: PresignBatchRequest,
+    ) -> PresignBatchOut:
+        """生成批量预签名 URL（文件不经后端，客户端直传 OSS）。
+
+        流程：
+          1. 校验设备注册状态 + 文件格式/大小
+          2. 生成 batch_id
+          3. 为每个文件生成 oss_key
+          4. 调用 S3 生成 presigned PUT URL
+          5. 返回签名 URL 列表
+        """
+        # ① 校验设备
+        device_svc = DeviceService(self._db)
+        device = await device_svc.get_active_device(data.device_code)
+
+        allowed_formats: list[str] = json.loads(device.allowed_formats)
+        allowed_formats_lower = [f.lower() for f in allowed_formats]
+        max_size_bytes = device.max_file_size_mb * 1024 * 1024
+
+        batch_id = uuid.uuid4().hex
+        presigns: list[PresignItemOut] = []
+        skipped: list[str] = []
+
+        # ② 逐个校验 + 生成 key + 签名
+        for item in data.files:
+            ext = os.path.splitext(item.filename)[1].lower()
+
+            # 格式校验
+            if ext not in allowed_formats_lower:
+                skipped.append(item.filename)
+                continue
+
+            # 大小校验
+            if item.file_size > max_size_bytes:
+                skipped.append(item.filename)
+                continue
+
+            oss_key = StorageClient.build_key(
+                app_code=app_code,
+                original_filename=item.filename,
+                device_code=data.device_code,
+                batch_id=batch_id,
+                relative_path=item.relative_path,
+            )
+
+            url = await self._storage.get_presigned_upload_url(
+                bucket=app_code,
+                key=oss_key,
+                content_type="application/octet-stream",
+                expires=300,
+            )
+
+            presigns.append(PresignItemOut(
+                filename=item.filename,
+                upload_url=url,
+                oss_key=oss_key,
+            ))
+
+        return PresignBatchOut(
+            batch_id=batch_id,
+            presigns=presigns,
+            expires_in=300,
+        )
+
+    async def confirm_batch_upload(
+        self,
+        *,
+        app_code: str,
+        user_id: int,
+        data: BatchConfirmRequest,
+    ) -> BatchUploadResult:
+        """确认批量直传完成，将文件记录写入 DB。
+
+        前置条件：文件已由客户端直传到 OSS，本方法仅写数据库。
+        """
+        # 查找设备
+        device_svc = DeviceService(self._db)
+        device = await device_svc.get_active_device(data.device_code)
+
+        # 批量写入 DB
+        db_items = []
+        for item in data.files:
+            db_items.append({
+                "app_code": app_code,
+                "device_id": device.id,
+                "batch_id": data.batch_id,
+                "relative_path": None,
+                "original_name": item.filename,
+                "file_format": item.file_format.upper(),
+                "file_size": item.file_size,
+                "oss_key": item.oss_key,
+                "status": "ready",
+                "uploaded_by": user_id,
+            })
+
+        if db_items:
+            async with self._db.begin():
+                await self._repo.batch_create(db_items)
+
+        return BatchUploadResult(
+            batch_id=data.batch_id,
+            device_code=data.device_code,
+            success_count=len(db_items),
+            failure_count=0,
+        )
+
+    # ------------------------------------------------------------------
+    # Batch upload (legacy proxy upload, kept for backward compatibility)
     # ------------------------------------------------------------------
 
     async def batch_upload(

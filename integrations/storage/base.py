@@ -22,8 +22,13 @@ class StorageClient(ABC):
         ...
 
     @abstractmethod
-    def get_presigned_url(self, bucket: str, key: str, expires: int = 3600) -> str:
-        """生成预签名下载 URL（同步方法，不涉及网络 I/O）。"""
+    async def get_presigned_url(self, bucket: str, key: str, expires: int = 3600) -> str:
+        """生成预签名下载 URL（异步方法）。"""
+        ...
+
+    @abstractmethod
+    async def get_presigned_upload_url(self, bucket: str, key: str, content_type: str = "application/octet-stream", expires: int = 300) -> str:
+        """生成预签名上传 URL（PUT），客户端可直传文件到此 URL。"""
         ...
 
     @abstractmethod

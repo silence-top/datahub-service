@@ -3,9 +3,12 @@ import json
 
 from fastapi import APIRouter, Form, Query, Request, UploadFile, status
 
-from domains.slice.dependencies import ServiceDep
+from domains.slice.dependencies import DeviceAuthDep, ServiceDep
 from domains.slice.schemas import (
+    BatchConfirmRequest,
     BatchUploadResult,
+    PresignBatchOut,
+    PresignBatchRequest,
     SliceFileOut,
     SliceListQuery,
     SlicePresignedUrlOut,
@@ -25,8 +28,6 @@ async def upload_slice(
     request: Request,
     svc: ServiceDep,
     file: UploadFile,
-    case_id: str | None = Form(None),
-    patient_id: str | None = Form(None),
     staining_type: str = Form(...),
     description: str | None = Form(None),
     device_code: str | None = Form(None, description="设备编码（可选，传则校验注册状态）"),
@@ -37,8 +38,6 @@ async def upload_slice(
     若传了 device_code，会校验设备注册状态和上传规则。
     """
     meta = SliceUploadMeta(
-        case_id=case_id,
-        patient_id=patient_id,
         staining_type=staining_type,
         description=description,
     )
@@ -56,17 +55,13 @@ async def upload_slice(
 async def list_slices(
     svc: ServiceDep,
     app_code: str | None = Query(None),
-    case_id: str | None = Query(None),
-    patient_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    """分页查询切片列表，支持 app_code / case_id / patient_id / status 过滤。"""
+    """分页查询切片列表，支持 app_code / status 过滤。"""
     query = SliceListQuery(
         app_code=app_code,
-        case_id=case_id,
-        patient_id=patient_id,
         status=status_filter,
         page=page,
         page_size=page_size,
@@ -78,6 +73,46 @@ async def list_slices(
         "page_size": page_size,
         "items": [i.model_dump() for i in items],
     })
+
+
+# ---------------------------------------------------------------------------
+# Presigned direct upload (服务端签名 + 客户端直传 OSS)
+# ---------------------------------------------------------------------------
+
+@router.post("/presign-upload-urls")
+async def presign_upload_urls(
+    auth: DeviceAuthDep,
+    svc: ServiceDep,
+    data: PresignBatchRequest,
+):
+    """生成批量预签名上传 URL（客户端直传 OSS，文件不经后端）。
+
+    认证：通过 X-Device-Code + X-Device-Secret 请求头验证设备身份。
+    校验设备注册状态 + 文件格式/大小规则。
+    """
+    result = await svc.presign_batch_upload(
+        app_code=auth.app_code,
+        data=data,
+    )
+    return response.success(data=result.model_dump())
+
+
+@router.post("/batch-confirm", status_code=status.HTTP_201_CREATED)
+async def batch_confirm(
+    auth: DeviceAuthDep,
+    svc: ServiceDep,
+    data: BatchConfirmRequest,
+):
+    """确认批量直传完成（文件已直传到 OSS，本接口仅写入 DB）。
+
+    认证：通过 X-Device-Code + X-Device-Secret 请求头验证设备身份。
+    """
+    result = await svc.confirm_batch_upload(
+        app_code=auth.app_code,
+        user_id=auth.device_id,
+        data=data,
+    )
+    return response.success(data=result.model_dump(), message="批量确认完成")
 
 
 @router.get("/{slice_id}")
@@ -95,7 +130,7 @@ async def get_presigned_url(
 ):
     """获取 OSS 预签名下载 URL。"""
     obj = await svc.get(slice_id)
-    url = svc.get_presigned_url(obj, expires=expires)
+    url = await svc.get_presigned_url(obj, expires=expires)
     result = SlicePresignedUrlOut(slice_id=slice_id, url=url, expires_in=expires)
     return response.success(data=result.model_dump())
 
@@ -117,8 +152,6 @@ async def batch_upload(
     files: list[UploadFile],
     relative_paths: str = Form(..., description="JSON 数组：每个文件对应的相对路径"),
     device_code: str = Form(..., description="设备编码（必须已注册）"),
-    case_id: str | None = Form(None),
-    patient_id: str | None = Form(None),
     staining_type: str | None = Form(None),
 ):
     """批量上传：多文件+文件夹，保留目录结构。
@@ -132,8 +165,5 @@ async def batch_upload(
         files=files,
         relative_paths=paths,
         device_code=device_code,
-        case_id=case_id,
-        patient_id=patient_id,
-        staining_type=staining_type,
     )
     return response.success(data=result.model_dump())

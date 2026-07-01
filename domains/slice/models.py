@@ -22,8 +22,6 @@ class SliceFile(Base):
 
     # --- 归属信息 ---
     app_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    case_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    patient_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # --- 设备关联 + 批量上传 ---
     device_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
@@ -54,8 +52,8 @@ class SliceFile(Base):
     )
 
     __table_args__ = (
-        Index("ix_slice_files_app_case", "app_code", "case_id"),
-        Index("ix_slice_files_app_patient", "app_code", "patient_id"),
+        Index("ix_slice_files_app_case", "app_code"),
+        Index("ix_slice_files_app_patient", "app_code"),
     )
 
     def __repr__(self) -> str:
