@@ -5,16 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------------------------------------------------------------------------
-# Upload / Create
-# ---------------------------------------------------------------------------
-
-class SliceUploadMeta(BaseModel):
-    """文件上传时携带的元数据（form-data 字段）。"""
-    staining_type: str = Field(..., max_length=32, description="染色类型，如 HE / IHC / PAS")
-    description: str | None = Field(None, max_length=512, description="备注信息（可选）")
-
-
-# ---------------------------------------------------------------------------
 # Response schemas
 # ---------------------------------------------------------------------------
 
@@ -130,3 +120,35 @@ class SliceListQuery(BaseModel):
     status: str | None = None
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)
+
+
+# ---------------------------------------------------------------------------
+# Folder upload (DZI/LD 文件夹格式)
+# ---------------------------------------------------------------------------
+
+class FolderUploadFileItem(BaseModel):
+    """文件夹内单个文件信息。"""
+
+    filename: str = Field(..., max_length=256, description="文件名")
+    relative_path: str = Field(..., max_length=512, description="相对于文件夹根目录的路径，如 Blocks/L00/B0000000C.jpg")
+    file_size: int = Field(..., gt=0, description="文件大小 (bytes)")
+
+
+class FolderUploadRequest(BaseModel):
+    """文件夹上传请求（DZI/LD 格式）。"""
+
+    format: str = Field(..., max_length=16, description="文件夹格式：DZI 或 LD")
+    folder_name: str = Field(..., max_length=255, description="文件夹名称")
+    staining_type: str | None = Field(None, max_length=32, description="染色类型")
+    files: list[FolderUploadFileItem] = Field(..., min_length=1, max_length=10000, description="文件夹内文件列表")
+
+
+class FolderUploadResult(BaseModel):
+    """文件夹上传结果。"""
+
+    batch_id: str
+    folder_name: str
+    file_format: str
+    success_count: int
+    failure_count: int
+    failures: list[BatchFileFailure] = Field(default_factory=list)

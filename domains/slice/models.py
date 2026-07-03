@@ -30,7 +30,7 @@ class SliceFile(Base):
 
     # --- 文件元数据 ---
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_format: Mapped[str] = mapped_column(String(16), nullable=False)   # SVS/NDPI/TIFF/MRXS
+    file_format: Mapped[str] = mapped_column(String(16), nullable=False, comment="文件格式：SVS/TIFF/TIF/DZI/LD（DZI/LD 为文件夹格式）")
     staining_type: Mapped[str] = mapped_column(String(32), nullable=False)  # HE/IHC/PAS/...
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)         # 字节数
 
