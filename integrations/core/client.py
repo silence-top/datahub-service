@@ -108,6 +108,95 @@ class CoreServiceClient:
             return None
 
     # ------------------------------------------------------------------
+    # Internal 接口（服务间 HMAC-SHA256 签名调用 /internal/*，只读 + sync）
+    # ------------------------------------------------------------------
+
+    async def list_departments_internal(self) -> dict | None:
+        """[internal] 获取本系统全量部门列表（前端自行组树）。"""
+        url = f"{self._base_url}/api/v1/identity/internal/apps/{self._app_code}/departments"
+        try:
+            resp = await self._client.get(url, headers=self._build_auth_headers())
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("list_departments_internal() failed: %s", exc)
+            return None
+
+    async def list_roles_internal(self) -> dict | None:
+        """[internal] 获取本系统全量角色列表。"""
+        url = f"{self._base_url}/api/v1/identity/internal/apps/{self._app_code}/roles"
+        try:
+            resp = await self._client.get(url, headers=self._build_auth_headers())
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("list_roles_internal() failed: %s", exc)
+            return None
+
+    async def get_user_roles_internal(self, user_id: int) -> dict | None:
+        """[internal] 查询用户在指定应用的角色列表。"""
+        url = f"{self._base_url}/api/v1/identity/internal/users/{user_id}/roles"
+        try:
+            resp = await self._client.get(
+                url, headers=self._build_auth_headers(),
+                params={"app_code": self._app_code},
+            )
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("get_user_roles_internal(%d) failed: %s", user_id, exc)
+            return None
+
+    async def list_users_internal(
+        self,
+        keyword: str | None = None,
+        is_active: bool | None = None,
+        dept_id: int | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict | None:
+        """[internal] 获取有权访问本系统的用户列表（分页）。"""
+        params: dict = {"page": page, "page_size": page_size}
+        if keyword:
+            params["keyword"] = keyword
+        if is_active is not None:
+            params["is_active"] = is_active
+        if dept_id:
+            params["dept_id"] = dept_id
+        url = f"{self._base_url}/api/v1/identity/internal/apps/{self._app_code}/users"
+        try:
+            resp = await self._client.get(url, headers=self._build_auth_headers(), params=params)
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("list_users_internal() failed: %s", exc)
+            return None
+
+    async def get_user_internal(self, user_id: int) -> dict | None:
+        """[internal] 查询单个用户信息。"""
+        url = f"{self._base_url}/api/v1/identity/internal/users/{user_id}"
+        try:
+            resp = await self._client.get(url, headers=self._build_auth_headers())
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("get_user_internal(%d) failed: %s", user_id, exc)
+            return None
+
+    async def list_menus_internal(self) -> dict | None:
+        """[internal] 获取本系统的菜单树（含未激活节点）。"""
+        url = f"{self._base_url}/api/v1/identity/internal/apps/{self._app_code}/menus"
+        try:
+            resp = await self._client.get(url, headers=self._build_auth_headers())
+            resp.raise_for_status()
+            return resp.json().get("data")
+        except Exception as exc:
+            logger.warning("list_menus_internal() failed: %s", exc)
+            return None
+
+    # ------------------------------------------------------------------
     # 管理接口代理（模拟网关转发，调用 core-service 常规接口）
     # ------------------------------------------------------------------
 

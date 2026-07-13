@@ -1,10 +1,12 @@
 ﻿# core/lifespan.py — Application startup / shutdown hooks
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from core.db import AsyncSessionLocal, engine
+from core.outbox import LogBroker, OutboxRelay
 from core.seed import seed_data
 from domains.oss.service import OssConfigService
 from integrations.core.client import CoreServiceClient
@@ -33,8 +35,19 @@ async def lifespan(app: FastAPI):
     app.state.core_client = CoreServiceClient()
     logger.info("CoreServiceClient 已初始化")
 
+    # --- 4. 启动 Outbox Relay（事件发布到 MQ）---
+    broker = LogBroker()  # 生产环境替换为 KafkaBroker / RabbitMQBroker
+    relay = OutboxRelay(broker, poll_interval=5.0)
+    relay_task = asyncio.create_task(relay.run())
+    app.state.outbox_relay = relay
+    logger.info("OutboxRelay 已启动 (LogBroker 模式, poll_interval=5s)")
+
     yield
 
+    # --- Shutdown ---
     logger.info("Datahub Service shutting down...")
+    relay.stop()
+    await relay_task
+    await broker.close()
     await app.state.core_client.close()
     await engine.dispose()

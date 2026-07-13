@@ -1,4 +1,4 @@
-﻿# domains/slice/schemas.py — Pydantic schemas for SliceFile
+﻿# domains/slice/schemas.py — Pydantic schemas for Slide
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,17 +8,19 @@ from pydantic import BaseModel, ConfigDict, Field
 # Response schemas
 # ---------------------------------------------------------------------------
 
-class SliceFileOut(BaseModel):
-    """切片文件元数据响应。"""
+class SlideOut(BaseModel):
+    """切片元数据响应。"""
 
     id: int
     app_code: str
-
-    original_name: str
+    device_id: int | None
+    batch_id: str | None
+    relative_path: str | None
+    slide_code: str
     file_format: str
-    staining_type: str
+    staining_type: str | None
     file_size: int
-    oss_key: str
+    oss_key: str | None
     thumbnail_key: str | None
     status: str
     uploaded_by: int
@@ -36,84 +38,67 @@ class SlicePresignedUrlOut(BaseModel):
     expires_in: int = Field(3600, description="URL 有效秒数")
 
 
+class STSCredentials(BaseModel):
+    """STS 临时凭证。"""
+
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+    expiration: str = Field(..., description="ISO 8601 格式过期时间")
+
+
+class UploadUrlOut(BaseModel):
+    """上传凭证响应（STS 临时凭证模式）。"""
+
+    slice_id: int
+    dir_key: str = Field(..., description="样本目录 OSS 路径")
+    endpoint_url: str | None = Field(None, description="S3 Endpoint（如 https://oss-cn-hangzhou.aliyuncs.com）")
+    region_name: str = Field(..., description="S3 区域，如 us-east-1")
+    bucket_name: str = Field(..., description="Bucket 名称")
+    credentials: STSCredentials
+    expires_in: int = Field(900, description="凭证有效秒数")
+
+
+
 # ---------------------------------------------------------------------------
-# Batch upload
+# Slice registration
 # ---------------------------------------------------------------------------
 
-class BatchFileFailure(BaseModel):
-    """单文件上传失败明细。"""
+class RegisterRequest(BaseModel):
+    """注册切片请求。"""
 
-    filename: str
-    error: str
+    device_code: str = Field(..., max_length=64, description="设备编码")
+    slide_code: str = Field(..., max_length=255, description="切片编码（扫描仪 barcode）")
+    file_format: str = Field(..., max_length=16, description="文件格式：SVS/TIFF/TIF/DZI/LD")
+    staining_type: str | None = Field(None, max_length=32, description="染色类型：HE/IHC/PAS/Masson 等")
+    file_size: int = Field(..., ge=0, description="文件大小 (bytes)")
 
 
-class BatchUploadResult(BaseModel):
-    """批量上传结果。"""
+class RegisterOut(BaseModel):
+    """注册响应。"""
 
-    batch_id: str
-    device_code: str
-    success_count: int
-    failure_count: int
-    failures: list[BatchFileFailure] = Field(default_factory=list)
+    slice_id: int
+    slide_code: str
+    status: str
 
 
 # ---------------------------------------------------------------------------
-# Presigned direct upload (服务端签名 + 客户端直传 OSS)
+# Status update
 # ---------------------------------------------------------------------------
 
-class PresignFileItem(BaseModel):
-    """单个待签名文件信息。"""
+class SlideStatusUpdate(BaseModel):
+    """切片状态更新请求。"""
 
-    filename: str = Field(..., max_length=256, description="原始文件名")
-    file_size: int = Field(..., gt=0, description="文件大小 (bytes)")
-    relative_path: str | None = Field(None, max_length=512, description="文件夹场景的相对路径")
-
-
-class PresignBatchRequest(BaseModel):
-    """批量预签名请求。"""
-
-    device_code: str = Field(..., max_length=64, description="设备编码（必须已注册）")
-    files: list[PresignFileItem] = Field(..., min_length=1, max_length=200)
-
-
-class PresignItemOut(BaseModel):
-    """单个预签名结果。"""
-
-    filename: str
-    upload_url: str
-    oss_key: str
-
-
-class PresignBatchOut(BaseModel):
-    """批量预签名响应。"""
-
-    batch_id: str
-    presigns: list[PresignItemOut]
-    expires_in: int = Field(300, description="签名有效秒数")
-
-
-class BatchConfirmFileItem(BaseModel):
-    """批量确认中单个已上传文件信息。"""
-
-    filename: str
-    oss_key: str
-    file_size: int
-    file_format: str = Field(..., max_length=16, description="文件格式，如 SVS, TIFF")
-
-
-class BatchConfirmRequest(BaseModel):
-    """批量直传确认请求（文件已直传到 OSS，客户端汇报写入 DB）。"""
-
-    batch_id: str
-    device_code: str
-    files: list[BatchConfirmFileItem] = Field(..., min_length=1)
+    slice_id: int = Field(..., gt=0, description="切片 ID")
+    status: str = Field(..., pattern="^(pending|uploading|ready|error)$", description="状态：pending/uploading/ready/error")
+    error_message: str | None = Field(None, max_length=512, description="错误信息（status=error 时必填）")
 
 
 # ---------------------------------------------------------------------------
 # List / Filter
 # ---------------------------------------------------------------------------
 
-class SliceListQuery(BaseModel):
+class SlideListQuery(BaseModel):
     """列表查询过滤参数。"""
 
     app_code: str | None = None
@@ -122,33 +107,4 @@ class SliceListQuery(BaseModel):
     page_size: int = Field(20, ge=1, le=100)
 
 
-# ---------------------------------------------------------------------------
-# Folder upload (DZI/LD 文件夹格式)
-# ---------------------------------------------------------------------------
 
-class FolderUploadFileItem(BaseModel):
-    """文件夹内单个文件信息。"""
-
-    filename: str = Field(..., max_length=256, description="文件名")
-    relative_path: str = Field(..., max_length=512, description="相对于文件夹根目录的路径，如 Blocks/L00/B0000000C.jpg")
-    file_size: int = Field(..., gt=0, description="文件大小 (bytes)")
-
-
-class FolderUploadRequest(BaseModel):
-    """文件夹上传请求（DZI/LD 格式）。"""
-
-    format: str = Field(..., max_length=16, description="文件夹格式：DZI 或 LD")
-    folder_name: str = Field(..., max_length=255, description="文件夹名称")
-    staining_type: str | None = Field(None, max_length=32, description="染色类型")
-    files: list[FolderUploadFileItem] = Field(..., min_length=1, max_length=10000, description="文件夹内文件列表")
-
-
-class FolderUploadResult(BaseModel):
-    """文件夹上传结果。"""
-
-    batch_id: str
-    folder_name: str
-    file_format: str
-    success_count: int
-    failure_count: int
-    failures: list[BatchFileFailure] = Field(default_factory=list)

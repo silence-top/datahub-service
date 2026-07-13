@@ -28,6 +28,10 @@ class OssConfig(Base):
     app_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True, comment="应用编码，用于路由存储")
 
     # --- 连接信息（非敏感）---
+    provider: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="aliyun",
+        comment="OSS 运营商：aliyun / aws / minio"
+    )
     config_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="配置名称")
     endpoint_url: Mapped[str] = mapped_column(
         String(256), nullable=True,
@@ -38,6 +42,10 @@ class OssConfig(Base):
         comment="S3 Region"
     )
     bucket_name: Mapped[str] = mapped_column(String(128), nullable=False, comment="Bucket 名称")
+    role_arn: Mapped[str] = mapped_column(
+        String(256), nullable=True,
+        comment="RAM Role ARN（阿里云 STS AssumeRole 用，如 acs:ram::123:role/xxx）"
+    )
 
     # --- 状态 ---
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否默认配置")

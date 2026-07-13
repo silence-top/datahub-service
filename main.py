@@ -27,6 +27,14 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "admin", "description": "管理 BFF 代理：转发到 core-service internal 接口的只读查询（部门/角色/用户/菜单）。"},
+        {"name": "devices", "description": "扫描仪设备注册与管理。"},
+        {"name": "slices", "description": "病理切片注册、上传凭证、状态同步。"},
+        {"name": "dict", "description": "数据字典（类型 + 值）维护。"},
+        {"name": "oss-configs", "description": "对象存储配置管理。"},
+        {"name": "ops", "description": "健康检查 / 运维接口。"},
+    ],
 )
 
 # ------------------------------------------------------------------

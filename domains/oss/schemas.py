@@ -12,20 +12,24 @@ class OssConfigCreate(BaseModel):
     """新建 S3 Bucket 配置。"""
 
     app_code: str = Field(..., max_length=32, description="应用编码，用于路由存储")
+    provider: str = Field("aliyun", max_length=16, description="OSS 运营商：aliyun / aws / minio")
     config_name: str = Field(..., max_length=128, description="配置名称")
     endpoint_url: str | None = Field(None, max_length=256, description="S3 Endpoint（AWS S3 留空）")
     region_name: str = Field("us-east-1", max_length=32, description="S3 Region")
     bucket_name: str = Field(..., max_length=128, description="Bucket 名称")
+    role_arn: str | None = Field(None, max_length=256, description="RAM Role ARN（阿里云 STS 用）")
     is_default: bool = Field(False, description="是否默认配置")
 
 
 class OssConfigUpdate(BaseModel):
     """更新 S3 Bucket 配置，所有字段可选。"""
 
+    provider: str | None = Field(None, max_length=16)
     config_name: str | None = Field(None, max_length=128)
     endpoint_url: str | None = Field(None, max_length=256)
     region_name: str | None = Field(None, max_length=32)
     bucket_name: str | None = Field(None, max_length=128)
+    role_arn: str | None = Field(None, max_length=256)
     is_default: bool | None = None
     is_active: bool | None = None
 
@@ -37,10 +41,12 @@ class OssConfigOut(BaseModel):
 
     id: int
     app_code: str
+    provider: str
     config_name: str
     endpoint_url: str | None
     region_name: str
     bucket_name: str
+    role_arn: str | None
     is_default: bool
     is_active: bool
     created_by: int

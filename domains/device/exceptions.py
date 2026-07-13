@@ -46,6 +46,32 @@ class DeviceNotRegisteredError(DeviceDomainError):
         )
 
 
+class DeviceAuthFailedError(DeviceDomainError):
+    """设备密钥认证失败 (401)。"""
+    status_code = 401
+    code = BizCode.UNAUTHORIZED
+
+    def __init__(self, detail: str = "设备编码或密钥错误"):
+        super().__init__(
+            message=f"设备认证失败：{detail}",
+            code=BizCode.UNAUTHORIZED,
+            status_code=401,
+        )
+
+
+class DeviceSlicePermissionError(DeviceDomainError):
+    """设备无权操作该切片 (403)。"""
+    status_code = 403
+    code = BizCode.FORBIDDEN
+
+    def __init__(self, slice_id: int, device_id: int):
+        super().__init__(
+            message=f"设备 #{device_id} 无权操作切片 #{slice_id}",
+            code=BizCode.FORBIDDEN,
+            status_code=403,
+        )
+
+
 class FileFormatNotAllowedError(DeviceDomainError):
     """文件格式不在设备允许列表 (422)。"""
     status_code = 422

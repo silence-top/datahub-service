@@ -17,20 +17,8 @@ from domains.oss.schemas import (
 
 
 def _to_out(obj: OssConfig) -> OssConfigOut:
-    """ORM → OssConfigOut。"""
-    return OssConfigOut(
-        id=obj.id,
-        app_code=obj.app_code,
-        config_name=obj.config_name,
-        endpoint_url=obj.endpoint_url,
-        region_name=obj.region_name,
-        bucket_name=obj.bucket_name,
-        is_default=obj.is_default,
-        is_active=obj.is_active,
-        created_by=obj.created_by,
-        created_at=obj.created_at,
-        updated_at=obj.updated_at,
-    )
+    """ORM → OssConfigOut（利用 Pydantic v2 的 from_attributes 自动映射）。"""
+    return OssConfigOut.model_validate(obj)
 
 
 class OssConfigService:
@@ -52,10 +40,12 @@ class OssConfigService:
 
         obj = await self._repo.create(
             app_code=data.app_code,
+            provider=data.provider,
             config_name=data.config_name,
             endpoint_url=data.endpoint_url,
             region_name=data.region_name,
             bucket_name=data.bucket_name,
+            role_arn=data.role_arn,
             is_default=data.is_default,
             is_active=True,
             created_by=user_id,
@@ -115,9 +105,11 @@ class OssConfigService:
         return [
             {
                 "app_code": c.app_code,
+                "provider": getattr(c, 'provider', None) or 'aliyun',
                 "endpoint_url": c.endpoint_url,
                 "region_name": c.region_name,
                 "bucket_name": c.bucket_name,
+                "role_arn": getattr(c, 'role_arn', None),
                 "is_default": c.is_default,
             }
             for c in configs

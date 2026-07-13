@@ -27,13 +27,32 @@ class StorageClient(ABC):
         ...
 
     @abstractmethod
-    async def get_presigned_upload_url(self, bucket: str, key: str, content_type: str = "application/octet-stream", expires: int = 300) -> str:
-        """生成预签名上传 URL（PUT），客户端可直传文件到此 URL。"""
+    async def get_sts_credentials(
+        self, bucket: str, dir_key: str, expires: int = 900
+    ) -> dict:
+        """获取 STS 临时凭证，限定只能写入指定目录前缀。
+
+        返回格式：
+        {
+            "access_key_id": str,
+            "secret_access_key": str,
+            "session_token": str,
+            "expiration": str (ISO 8601),
+        }
+        """
         ...
 
     @abstractmethod
     async def exists(self, bucket: str, key: str) -> bool:
         """检查对象是否存在。"""
+        ...
+
+    @abstractmethod
+    def get_config(self, app_code: str) -> dict:
+        """获取存储配置（provider, endpoint_url, region_name, bucket_name, role_arn）。
+
+        返回：{"provider": str, "endpoint_url": str|None, "region_name": str, "bucket_name": str, "role_arn": str|None}
+        """
         ...
 
     async def batch_upload(self, bucket: str, uploads: list[dict]) -> list[str]:
@@ -57,29 +76,40 @@ class StorageClient(ABC):
     @staticmethod
     def build_key(
         app_code: str,
-        original_filename: str,
+        slide_code: str,
         prefix: str = "slices",
         device_code: str | None = None,
-        batch_id: str | None = None,
+        original_filename: str | None = None,
         relative_path: str | None = None,
+        is_folder: bool = False,
     ) -> str:
         """生成 OSS 对象路径。
 
-        有设备+批次:
-          {prefix}/{app_code}/{device_code}/{YYYY}/{batch_id}/{relative_path}
-        无设备（兼容旧逻辑）:
-          {prefix}/{app_code}/{YYYY}/{uuid}{ext}
+        以样本为单位，目录段使用 slide_code（不带文件后缀）。
+
+        单文件（SVS/TIFF）：
+          {prefix}/{device_code}/{YYYY-MM-DD}/{slide_code}_{uuid}/{filename}
+          示例：slices/scanner-001/2026-07-06/340C_a1b2c3d4/340C.svs
+
+        文件夹（DZI/LD）：
+          {prefix}/{device_code}/{YYYY-MM-DD}/{slide_code}_{uuid}
+          示例：slices/scanner-001/2026-07-06/340C_a1b2c3d4
         """
         import uuid
         from datetime import datetime
         from pathlib import PurePosixPath
 
-        year = datetime.now().strftime("%Y")
-        ext = PurePosixPath(original_filename).suffix.lower()
+        today = datetime.now().strftime("%Y-%m-%d")
+        uid = uuid.uuid4().hex[:8]
+        dev = device_code or "unknown"
 
-        if device_code and batch_id:
-            # 保留目录结构：relative_path 含子目录 + 文件名
-            path_segment = relative_path or (uuid.uuid4().hex + ext)
-            return f"{prefix}/{app_code}/{device_code}/{year}/{batch_id}/{path_segment}"
+        # 目录段：slide_code 不带文件后缀
+        sc = PurePosixPath(slide_code).stem
 
-        return f"{prefix}/{app_code}/{year}/{uuid.uuid4().hex}{ext}"
+        if is_folder:
+            # DZI/LD：oss_key 指向目录
+            return f"{prefix}/{dev}/{today}/{sc}_{uid}"
+        else:
+            # 单文件：oss_key 指向文件
+            filename = original_filename or slide_code
+            return f"{prefix}/{dev}/{today}/{sc}_{uid}/{filename}"

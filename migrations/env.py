@@ -34,7 +34,7 @@ if config.config_file_name is not None:
 # Import all models so Alembic can detect changes via MetaData
 # ---------------------------------------------------------------------------
 from core.db import Base  # noqa: E402
-import domains.slice.models  # noqa: F401, E402  — register SliceFile
+import domains.slice.models  # noqa: F401, E402  — register Slide
 import domains.device.models  # noqa: F401, E402  — register Device
 import domains.oss.models  # noqa: F401, E402  — register OssConfig
 

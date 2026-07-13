@@ -1,24 +1,20 @@
 ﻿# domains/slice/router.py — /slices routes
 """
-统一 OSS 直传模式：
-  - 客户端请求预签名 URL → 直传 OSS → 通知服务端写 DB
-  - 文件数据不经过服务端，服务端只负责签名 + 入库
+统一 OSS 直传模式（STS 临时凭证）：
+  - 客户端请求 STS 凭证 → 直传 OSS → 同步状态
+  - 文件数据不经过服务端，服务端只负责发凭证 + 入库
 """
-import json
-
 from fastapi import APIRouter, Query, status
 
 from domains.slice.dependencies import DeviceAuthDep, ServiceDep
 from domains.slice.schemas import (
-    BatchConfirmRequest,
-    BatchUploadResult,
-    FolderUploadRequest,
-    FolderUploadResult,
-    PresignBatchOut,
-    PresignBatchRequest,
-    SliceFileOut,
-    SliceListQuery,
+    RegisterOut,
+    RegisterRequest,
+    SlideOut,
+    SlideListQuery,
     SlicePresignedUrlOut,
+    SlideStatusUpdate,
+    UploadUrlOut,
 )
 from nexuskit_sdk import response
 
@@ -26,93 +22,67 @@ router = APIRouter(prefix="/slices", tags=["slices"])
 
 
 # ---------------------------------------------------------------------------
-# Presigned direct upload — 批量单文件（SVS/TIFF 等）
-# 流程：客户端签名 → 直传 OSS → 确认写 DB
+# Slice registration
 # ---------------------------------------------------------------------------
 
-@router.post("/presign-upload-urls")
-async def presign_upload_urls(
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_slices(
     auth: DeviceAuthDep,
     svc: ServiceDep,
-    data: PresignBatchRequest,
+    data: RegisterRequest,
 ):
-    """生成批量预签名上传 URL（客户端直传 OSS，文件不经后端）。
+    """注册切片：创建 DB 记录（status=pending），返回 slice_id。
 
-    认证：通过 X-Device-Code + X-Device-Secret 请求头验证设备身份。
-    校验设备注册状态 + 文件格式/大小规则。
-    """
-    result = await svc.presign_batch_upload(
-        app_code=auth.app_code,
-        data=data,
-    )
-    return response.success(data=result.model_dump())
-
-
-@router.post("/batch-confirm", status_code=status.HTTP_201_CREATED)
-async def batch_confirm(
-    auth: DeviceAuthDep,
-    svc: ServiceDep,
-    data: BatchConfirmRequest,
-):
-    """确认批量直传完成（文件已直传到 OSS，本接口仅写入 DB）。
+    此时文件尚未上传，oss_key 为空。客户端拿到 slice_id 后用于后续的：
+      - 获取上传凭证（POST /slices/upload-url?slice_id=xxx）
+      - 状态同步（PUT /slices/status）
 
     认证：通过 X-Device-Code + X-Device-Secret 请求头验证设备身份。
     """
-    result = await svc.confirm_batch_upload(
+    result = await svc.register_slices(
         app_code=auth.app_code,
         user_id=auth.device_id,
         data=data,
     )
-    return response.success(data=result.model_dump(), message="批量确认完成")
+    return response.success(data=result.model_dump(), message="注册完成")
 
 
 # ---------------------------------------------------------------------------
-# Presigned direct upload — 文件夹格式（DZI/LD）
-# 流程：上传软件遍历文件夹 → 签名 → 直传 OSS → 确认写 DB
+# Upload credentials (STS 临时凭证，单文件/文件夹通用)
 # ---------------------------------------------------------------------------
 
-@router.post("/folder-presign-urls")
-async def folder_presign_urls(
-    auth: DeviceAuthDep,
+@router.post("/upload-url")
+async def get_upload_credentials(
     svc: ServiceDep,
-    data: FolderUploadRequest,
+    auth: DeviceAuthDep,
+    slice_id: int = Query(..., description="切片 ID"),
+    expires: int = Query(900, ge=60, le=3600, description="凭证有效秒数（60s ~ 1h）"),
 ):
-    """为文件夹格式（DZI/LD）生成预签名上传 URL。
+    """获取上传凭证（STS 临时凭证，单文件和文件夹通用）。
 
-    上传软件负责遍历文件夹，服务端只记录格式标识。
-    客户端直传 OSS，文件不经后端。
+    返回 dir_key + STS 临时凭证，客户端使用凭证 + AWS SDK 直接上传。
+    上传完成后调用 PUT /slices/status 更新状态。
 
-    认证：通过 X-Device-Code + X-Device-Secret 请求头验证设备身份。
+    会校验切片是否属于当前设备（防止越权）。
     """
-    result = await svc.presign_folder_upload(
-        app_code=auth.app_code,
-        device_code=auth.device_code,
-        data=data,
+    result = await svc.get_upload_credentials(
+        slice_id, expires=expires, device_id=auth.device_id,
     )
     return response.success(data=result.model_dump())
 
 
-@router.post("/folder-confirm", status_code=status.HTTP_201_CREATED)
-async def folder_confirm(
-    auth: DeviceAuthDep,
+@router.put("/status")
+async def update_status(
     svc: ServiceDep,
-    data: FolderUploadRequest,
-    batch_id: str = Query(..., description="批次 ID"),
-    oss_keys: str = Query(..., description="JSON 数组：每个文件对应的 OSS key"),
+    auth: DeviceAuthDep,
+    data: SlideStatusUpdate,
 ):
-    """确认文件夹格式上传完成（文件已直传到 OSS）。
+    """更新切片状态（扫描仪同步上传进度）。
 
-    将文件夹内所有文件记录写入 DB，file_format 统一为 DZI/LD。
+    会校验切片是否属于当前设备（防止越权）。
     """
-    keys = json.loads(oss_keys)
-    result = await svc.confirm_folder_upload(
-        app_code=auth.app_code,
-        user_id=auth.device_id,
-        data=data,
-        batch_id=batch_id,
-        oss_keys=keys,
-    )
-    return response.success(data=result.model_dump(), message="文件夹上传完成")
+    result = await svc.update_status(data.slice_id, data, device_id=auth.device_id)
+    return response.success(data=result.model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +98,7 @@ async def list_slices(
     page_size: int = Query(20, ge=1, le=100),
 ):
     """分页查询切片列表，支持 app_code / status 过滤。"""
-    query = SliceListQuery(
+    query = SlideListQuery(
         app_code=app_code,
         status=status_filter,
         page=page,

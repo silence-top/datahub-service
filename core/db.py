@@ -29,6 +29,11 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """提供 AsyncSession，事务边界由各 Service 自行掌控。
+
+    注意：这里**不**自动 commit / rollback，避免与 Service 内显式 commit 冲突，
+    特别是 Outbox 模式下业务数据与 outbox 事件必须在同一个 commit 原子提交。
+    """
     async with AsyncSessionLocal() as session:
         yield session
 

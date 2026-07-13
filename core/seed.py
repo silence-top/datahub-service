@@ -39,6 +39,7 @@ async def _seed_devices(db: AsyncSession) -> None:
     device = Device(
         app_code="datahub",
         device_code="default-device",
+        device_secret="default-secret-change-in-production",
         device_name="默认扫描仪",
         dept_id = 1,
         model="Generic",
